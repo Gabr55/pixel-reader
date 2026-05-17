@@ -19,6 +19,7 @@ struct ReaderBootstrapViewState
     TokenViewStyling &token_view_styling;
     ViewStack &view_stack;
     StateStore &state_store;
+    std::function<void(const std::filesystem::path &, uint32_t)> on_progress;
 
     bool is_done = false;
     bool needs_render = true;
@@ -28,13 +29,15 @@ struct ReaderBootstrapViewState
         SystemStyling &sys_styling,
         TokenViewStyling &token_view_styling,
         ViewStack &view_stack,
-        StateStore &state_store
+        StateStore &state_store,
+        std::function<void(const std::filesystem::path &, uint32_t)> on_progress
     ) :
         book_path(book_path),
         sys_styling(sys_styling),
         token_view_styling(token_view_styling),
         view_stack(view_stack),
-        state_store(state_store)
+        state_store(state_store),
+        on_progress(std::move(on_progress))
     {
     }
 };
@@ -70,8 +73,13 @@ void ReaderBootstrapView::load_reader()
         view_stack
     );
 
-    reader_view->set_on_change_address([&state_store, book_id](DocAddr addr) {
+    auto on_progress = state->on_progress;
+    reader_view->set_on_change_address([&state_store, book_id, book_path, reader, on_progress](DocAddr addr) {
         state_store.set_book_address(book_id, addr);
+        if (on_progress)
+        {
+            on_progress(book_path, reader->get_global_progress_percent(addr));
+        }
     });
 
     view_stack.push(reader_view);
@@ -83,8 +91,9 @@ ReaderBootstrapView::ReaderBootstrapView(
     TokenViewStyling &token_view_styling,
     ViewStack &view_stack,
     StateStore &state_store,
-    std::function<void(std::function<void()>)> async
-) : state(std::make_unique<ReaderBootstrapViewState>(book_path, sys_styling, token_view_styling, view_stack, state_store))
+    std::function<void(std::function<void()>)> async,
+    std::function<void(const std::filesystem::path &, uint32_t)> on_progress
+) : state(std::make_unique<ReaderBootstrapViewState>(book_path, sys_styling, token_view_styling, view_stack, state_store, std::move(on_progress)))
 {
     // Perform asynchronously so that rendering can continue
     async([this](){ load_reader(); });

@@ -3,10 +3,12 @@
 #include "./settings_store.h"
 #include "./shoulder_keymap.h"
 #include "./state_store.h"
+#include "./library_store.h"
 #include "./system_styling.h"
 #include "./color_theme_def.h"
 #include "./view_stack.h"
 #include "./views/file_selector.h"
+#include "./views/library_view.h"
 #include "./views/reader_bootstrap_view.h"
 #include "./views/settings_view.h"
 #include "./views/token_view/token_view_styling.h"
@@ -33,13 +35,14 @@ namespace
 void initialize_views(
     ViewStack &view_stack,
     StateStore &state_store,
+    LibraryStore &library_store,
     SystemStyling &sys_styling,
     TokenViewStyling &token_view_styling,
     TaskQueue &task_queue,
     std::optional<std::filesystem::path> requested_book_path
 )
 {
-    auto load_book = [&view_stack, &state_store, &sys_styling, &token_view_styling, &task_queue](std::filesystem::path path) {
+    auto load_book = [&view_stack, &state_store, &library_store, &sys_styling, &token_view_styling, &task_queue](std::filesystem::path path) {
         if (!std::filesystem::exists(path))
         {
             std::cerr << path << " does not exist" << std::endl;
@@ -51,6 +54,7 @@ void initialize_views(
             return;
         }
 
+        library_store.mark_opened(path);
         view_stack.push(
             std::make_shared<ReaderBootstrapView>(
                 path,
@@ -58,7 +62,10 @@ void initialize_views(
                 token_view_styling,
                 view_stack,
                 state_store,
-                [&task_queue](task_func task){ task_queue.submit(task); }
+                [&task_queue](task_func task){ task_queue.submit(task); },
+                [&library_store](const std::filesystem::path &path, uint32_t progress) {
+                    library_store.update_progress(path, progress);
+                }
             )
         );
     };
@@ -69,26 +76,14 @@ void initialize_views(
     }
     else
     {
-        auto browse_path = state_store.get_current_browse_path().value_or(DEFAULT_BROWSE_PATH);
-        std::shared_ptr<FileSelector> fs = std::make_shared<FileSelector>(
-            browse_path,
-            sys_styling
+        view_stack.push(
+            std::make_shared<LibraryView>(
+                library_store,
+                sys_styling,
+                view_stack,
+                load_book
+            )
         );
-
-        fs->set_on_file_selected(load_book);
-        fs->set_on_file_focus([&state_store](std::string path) {
-            state_store.set_current_browse_path(path);
-        });
-        fs->set_on_view_focus([&state_store]() {
-            state_store.remove_current_book_path();
-        });
-
-        view_stack.push(fs);
-
-        if (state_store.get_current_book_path())
-        {
-            load_book(state_store.get_current_book_path().value());
-        }
     }
 }
 
@@ -200,6 +195,7 @@ int main(int argc, char **argv)
 
     auto config = load_config_with_defaults();
     StateStore state_store(config[CONFIG_KEY_STORE_PATH]);
+    LibraryStore library_store(state_store.get_base_dir());
 
     // Preload & check fonts
     auto init_font_name = get_valid_font_name(settings_get_font_name(state_store).value_or(DEFAULT_FONT_NAME));
@@ -249,6 +245,7 @@ int main(int argc, char **argv)
     initialize_views(
         view_stack,
         state_store,
+        library_store,
         sys_styling,
         token_view_styling,
         task_queue,

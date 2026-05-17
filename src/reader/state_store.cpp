@@ -110,6 +110,11 @@ StateStore::~StateStore()
 {
 }
 
+std::filesystem::path StateStore::get_base_dir() const
+{
+    return activity_store_path.parent_path();
+}
+
 const std::optional<std::filesystem::path> &StateStore::get_current_browse_path() const
 {
     return current_browse_path;

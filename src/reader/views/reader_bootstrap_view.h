@@ -28,7 +28,8 @@ public:
         TokenViewStyling &token_view_styling,
         ViewStack &view_stack,
         StateStore &state_store,
-        std::function<void(std::function<void()>)> async
+        std::function<void(std::function<void()>)> async,
+        std::function<void(const std::filesystem::path &, uint32_t)> on_progress = nullptr
     );
     virtual ~ReaderBootstrapView();
 

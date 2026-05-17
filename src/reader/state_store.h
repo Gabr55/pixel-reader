@@ -35,6 +35,8 @@ public:
     StateStore(std::filesystem::path base_dir);
     virtual ~StateStore();
 
+    std::filesystem::path get_base_dir() const;
+
     // activity
     const std::optional<std::filesystem::path> &get_current_browse_path() const;
     void set_current_browse_path(std::filesystem::path path);

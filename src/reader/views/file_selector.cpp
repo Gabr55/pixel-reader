@@ -4,6 +4,7 @@
 #include "filetypes/open_doc.h"
 #include "reader/system_styling.h"
 #include "sys/filesystem.h"
+#include "sys/keymap.h"
 
 #include <filesystem>
 #include <iostream>
@@ -14,6 +15,7 @@ struct FSState
     std::filesystem::path path;
     std::vector<FSEntry> path_entries;
     std::function<void(const std::filesystem::path &)> on_file_selected;
+    std::function<void(const std::filesystem::path &)> on_folder_selected;
     std::function<void(const std::filesystem::path &)> on_file_focus;
     std::function<void()> on_view_focus;
 
@@ -37,7 +39,7 @@ void refresh_path_entries(FSState *s)
     }
 
     for (const auto &entry : directory_listing(s->path)) {
-        if (entry.is_dir || file_type_is_supported(entry.name)) {
+        if (entry.is_dir || (!s->on_folder_selected && file_type_is_supported(entry.name))) {
             s->path_entries.push_back(entry);
         }
     }
@@ -165,6 +167,13 @@ bool FileSelector::is_done()
 
 void FileSelector::on_keypress(SDLKey key)
 {
+    if (key == SW_BTN_SELECT && state->on_folder_selected)
+    {
+        state->on_folder_selected(state->path);
+        state->menu.close();
+        return;
+    }
+
     state->menu.on_keypress(key);
 }
 
@@ -184,6 +193,12 @@ void FileSelector::on_focus()
 void FileSelector::set_on_file_selected(std::function<void(const std::filesystem::path &)> callback)
 {
     state->on_file_selected = callback;
+}
+
+void FileSelector::set_on_folder_selected(std::function<void(const std::filesystem::path &)> callback)
+{
+    state->on_folder_selected = callback;
+    refresh_path_entries(state.get());
 }
 
 void FileSelector::set_on_file_focus(std::function<void(const std::filesystem::path &)> callback)

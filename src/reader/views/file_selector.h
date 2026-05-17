@@ -29,6 +29,7 @@ public:
     void on_focus() override;
 
     void set_on_file_selected(std::function<void(const std::filesystem::path &)> on_file_selected);
+    void set_on_folder_selected(std::function<void(const std::filesystem::path &)> on_folder_selected);
     void set_on_file_focus(std::function<void(const std::filesystem::path &)> on_file_focus);
     void set_on_view_focus(std::function<void()> on_view_focus);
 };
