@@ -65,15 +65,15 @@ std::string progress_label(const LibraryBook &book)
 {
     if (book.status == "missing")
     {
-        return "MISS";
+        return "!";
     }
     if (book.progress == 0)
     {
-        return "NEW";
+        return "*";
     }
     if (book.progress >= 98)
     {
-        return "DONE";
+        return "✓";
     }
     return std::to_string(book.progress) + "%";
 }

@@ -40,6 +40,16 @@ const std::vector<std::pair<std::string, ColorTheme>> theme_defs = {
         }
     },
     {
+        "soft_sepia",
+        {
+            {244, 236, 222, 0}, // background
+            {42, 39, 35, 0},    // main text
+            {132, 121, 105, 0}, // secondary text
+            {205, 185, 150, 0}, // highlight background
+            {32, 29, 25, 0},    // highlight text
+        }
+    },
+    {
         "vampire",
         {
             {0, 0, 0, 0},   // background
