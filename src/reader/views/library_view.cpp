@@ -73,7 +73,7 @@ std::string progress_label(const LibraryBook &book)
     }
     if (book.progress >= 98)
     {
-        return "✓";
+        return "End";
     }
     return std::to_string(book.progress) + "%";
 }
