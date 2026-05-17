@@ -69,9 +69,9 @@ std::string progress_label(const LibraryBook &book)
     }
     if (book.progress == 0)
     {
-        return "*";
+        return "New";
     }
-    if (book.progress >= 98)
+    if (book.progress >= 99)
     {
         return "End";
     }
