@@ -32,6 +32,7 @@ public:
     void set_on_folder_selected(std::function<void(const std::filesystem::path &)> on_folder_selected);
     void set_on_file_focus(std::function<void(const std::filesystem::path &)> on_file_focus);
     void set_on_view_focus(std::function<void()> on_view_focus);
+    void set_file_marked(std::function<bool(const std::filesystem::path &)> file_marked);
 };
 
 #endif

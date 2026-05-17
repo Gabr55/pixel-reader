@@ -18,6 +18,7 @@ struct FSState
     std::function<void(const std::filesystem::path &)> on_folder_selected;
     std::function<void(const std::filesystem::path &)> on_file_focus;
     std::function<void()> on_view_focus;
+    std::function<bool(const std::filesystem::path &)> file_marked;
 
     SelectionMenu menu;
 
@@ -47,7 +48,15 @@ void refresh_path_entries(FSState *s)
     std::vector<std::string> menu_entries;
     for (const auto &entry : s->path_entries)
     {
-        menu_entries.push_back(entry.name);
+        auto path = s->path / entry.name;
+        if (!entry.is_dir && s->file_marked && s->file_marked(path))
+        {
+            menu_entries.push_back("[x] " + entry.name);
+        }
+        else
+        {
+            menu_entries.push_back(entry.name);
+        }
     }
     s->menu.set_entries(menu_entries);
 }
@@ -83,6 +92,9 @@ void on_menu_entry_selected(FSState *s, uint32_t menu_index)
         if (s->on_file_selected)
         {
             s->on_file_selected(s->path / entry.name);
+            auto selected_name = entry.name;
+            refresh_path_entries(s);
+            s->menu.set_cursor_pos("[x] " + selected_name);
         }
     }
 }
@@ -209,4 +221,10 @@ void FileSelector::set_on_file_focus(std::function<void(const std::filesystem::p
 void FileSelector::set_on_view_focus(std::function<void()> callback)
 {
     state->on_view_focus = callback;
+}
+
+void FileSelector::set_file_marked(std::function<bool(const std::filesystem::path &)> callback)
+{
+    state->file_marked = callback;
+    refresh_path_entries(state.get());
 }

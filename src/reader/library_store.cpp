@@ -204,7 +204,132 @@ std::pair<std::string, std::string> epub_title_author(const std::filesystem::pat
     return {title, author};
 }
 
-LibraryBook make_book(const std::filesystem::path &path)
+std::string find_meta_content(xmlNodePtr node, const std::string &name)
+{
+    while (node)
+    {
+        if (node->type == XML_ELEMENT_NODE && xmlStrEqual(node->name, BAD_CAST "meta"))
+        {
+            const xmlChar *name_attr = xmlGetProp(node, BAD_CAST "name");
+            const xmlChar *content_attr = xmlGetProp(node, BAD_CAST "content");
+            if (name_attr && content_attr && name == (const char*)name_attr)
+            {
+                return (const char*)content_attr;
+            }
+        }
+
+        if (auto found = find_meta_content(node->children, name); !found.empty())
+        {
+            return found;
+        }
+        node = node->next;
+    }
+    return "";
+}
+
+std::string cover_href_from_package(const std::string &rootfile_path, const std::vector<char> &package_xml)
+{
+    PackageContents package;
+    if (!epub_parse_package_contents(rootfile_path, package_xml.data(), package))
+    {
+        return "";
+    }
+
+    for (const auto &[id, item] : package.id_to_manifest_item)
+    {
+        if (item.properties.find("cover-image") != std::string::npos)
+        {
+            return item.href_absolute;
+        }
+    }
+
+    xmlDocPtr doc = xmlReadMemory(package_xml.data(), package_xml.size(), nullptr, nullptr, XML_PARSE_RECOVER | XML_PARSE_NOERROR | XML_PARSE_NOWARNING);
+    if (doc)
+    {
+        std::string cover_id = find_meta_content(xmlDocGetRootElement(doc), "cover");
+        xmlFreeDoc(doc);
+        if (!cover_id.empty())
+        {
+            auto it = package.id_to_manifest_item.find(cover_id);
+            if (it != package.id_to_manifest_item.end())
+            {
+                return it->second.href_absolute;
+            }
+        }
+    }
+
+    for (const auto &[id, item] : package.id_to_manifest_item)
+    {
+        const auto media = to_lower(item.media_type);
+        const auto href = to_lower(item.href);
+        const auto item_id = to_lower(id);
+        if (media.find("image/") == 0 && (item_id.find("cover") != std::string::npos || href.find("cover") != std::string::npos))
+        {
+            return item.href_absolute;
+        }
+    }
+
+    return "";
+}
+
+std::string image_ext_from_path(const std::filesystem::path &path)
+{
+    auto ext = to_lower(path.extension().string());
+    if (ext == ".jpeg")
+    {
+        return ".jpg";
+    }
+    if (ext == ".jpg" || ext == ".png" || ext == ".gif" || ext == ".bmp")
+    {
+        return ext;
+    }
+    return ".jpg";
+}
+
+std::filesystem::path extract_epub_cover(const std::filesystem::path &book_path, const std::string &book_id, const std::filesystem::path &cover_dir)
+{
+    int err = 0;
+    zip_t *zip = zip_open(book_path.c_str(), ZIP_RDONLY, &err);
+    if (!zip)
+    {
+        return {};
+    }
+
+    std::filesystem::path out_path;
+    auto container_xml = read_zip_file_str(zip, EPUB_CONTAINER_PATH);
+    auto rootfile_path = container_xml.empty() ? std::string() : epub_parse_rootfile_path(container_xml.data());
+    if (!rootfile_path.empty())
+    {
+        auto package_xml = read_zip_file_str(zip, rootfile_path);
+        if (!package_xml.empty())
+        {
+            auto cover_href = cover_href_from_package(rootfile_path, package_xml);
+            if (!cover_href.empty())
+            {
+                auto image_data = read_zip_file_str(zip, cover_href);
+                if (image_data.size() > 1)
+                {
+                    std::filesystem::create_directories(cover_dir);
+                    out_path = cover_dir / (book_id + image_ext_from_path(cover_href));
+                    std::ofstream out(out_path, std::ios::binary);
+                    if (out.is_open())
+                    {
+                        out.write(image_data.data(), image_data.size() - 1);
+                    }
+                    else
+                    {
+                        out_path.clear();
+                    }
+                }
+            }
+        }
+    }
+
+    zip_close(zip);
+    return out_path;
+}
+
+LibraryBook make_book(const std::filesystem::path &path, const std::filesystem::path &cover_dir)
 {
     LibraryBook book;
     book.path = std::filesystem::absolute(path).lexically_normal();
@@ -220,6 +345,7 @@ LibraryBook make_book(const std::filesystem::path &path)
         auto [title, author] = epub_title_author(book.path);
         book.title = title;
         book.author = author;
+        book.cover_path = extract_epub_cover(book.path, book.id, cover_dir);
     }
 
     if (book.title.empty())
@@ -259,7 +385,8 @@ void sort_books(std::vector<LibraryBook> &books)
 } // namespace
 
 LibraryStore::LibraryStore(std::filesystem::path state_dir)
-    : library_path(state_dir / "library.json")
+    : library_path(state_dir / "library.json"),
+      cover_dir(state_dir / "covers")
 {
     load();
 }
@@ -280,6 +407,7 @@ void LibraryStore::load()
 
     std::string json((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     std::regex object_re("\\{[^\\{\\}]*\"path\"[^\\{\\}]*\\}");
+    bool changed = false;
     for (auto it = std::sregex_iterator(json.begin(), json.end(), object_re); it != std::sregex_iterator(); ++it)
     {
         std::string obj = it->str();
@@ -289,6 +417,7 @@ void LibraryStore::load()
         book.title = json_string_field(obj, "title");
         book.author = json_string_field(obj, "author");
         book.format = json_string_field(obj, "format");
+        book.cover_path = json_string_field(obj, "cover_path");
         book.progress = json_uint_field(obj, "progress");
         book.status = json_string_field(obj, "status");
         book.added_at = json_int_field(obj, "added_at");
@@ -302,10 +431,22 @@ void LibraryStore::load()
             {
                 book.status = "missing";
             }
+            else if (
+                to_lower(book.path.extension().string()) == ".epub" &&
+                (book.cover_path.empty() || !std::filesystem::exists(book.cover_path))
+            )
+            {
+                book.cover_path = extract_epub_cover(book.path, book.id, cover_dir);
+                changed = changed || !book.cover_path.empty();
+            }
             books.push_back(book);
         }
     }
     sort_books(books);
+    if (changed)
+    {
+        save();
+    }
 }
 
 void LibraryStore::save() const
@@ -322,6 +463,7 @@ void LibraryStore::save() const
         out << "      \"title\": \"" << json_escape(b.title) << "\",\n";
         out << "      \"author\": \"" << json_escape(b.author) << "\",\n";
         out << "      \"format\": \"" << json_escape(b.format) << "\",\n";
+        out << "      \"cover_path\": \"" << json_escape(b.cover_path.string()) << "\",\n";
         out << "      \"progress\": " << b.progress << ",\n";
         out << "      \"status\": \"" << json_escape(b.status) << "\",\n";
         out << "      \"added_at\": " << b.added_at << ",\n";
@@ -347,23 +489,43 @@ bool LibraryStore::add_book(const std::filesystem::path &path)
         }
     }
 
-    books.push_back(make_book(path));
+    books.push_back(make_book(path, cover_dir));
     sort_books(books);
     save();
     return true;
 }
 
-uint32_t LibraryStore::add_folder(const std::filesystem::path &path)
+bool LibraryStore::contains_book(const std::filesystem::path &path) const
 {
-    uint32_t count = 0;
-    for (const auto &entry : std::filesystem::directory_iterator(path))
+    for (const auto &book : books)
     {
-        if (entry.is_regular_file() && add_book(entry.path()))
+        if (same_book_identity(book, path))
         {
-            ++count;
+            return true;
         }
     }
-    return count;
+    return false;
+}
+
+bool LibraryStore::remove_book(const std::filesystem::path &path)
+{
+    auto it = std::find_if(books.begin(), books.end(), [&path](const LibraryBook &book) {
+        return same_book_identity(book, path);
+    });
+
+    if (it == books.end())
+    {
+        return false;
+    }
+
+    if (!it->cover_path.empty())
+    {
+        std::error_code ec;
+        std::filesystem::remove(it->cover_path, ec);
+    }
+    books.erase(it);
+    save();
+    return true;
 }
 
 void LibraryStore::mark_opened(const std::filesystem::path &path)
