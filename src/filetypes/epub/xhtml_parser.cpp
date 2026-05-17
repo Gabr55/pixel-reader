@@ -122,13 +122,15 @@ struct Node
     DocAddr address;
     xmlNodePtr node;
     std::string text;
+    TextStyle style;
     int list_depth;
 
-    Node(Type type, DocAddr address, xmlNodePtr node, std::string text, int list_depth)
+    Node(Type type, DocAddr address, xmlNodePtr node, std::string text, TextStyle style, int list_depth)
         : type(type)
         , address(address)
         , node(node)
         , text(std::move(text))
+        , style(style)
         , list_depth(list_depth)
     {
     }
@@ -180,6 +182,8 @@ class NodeProcessor
     int pre_depth = 0;
     int header_depth = 0;
     int table_depth = 0;
+    TextStyle current_style = TextStyle::Normal;
+    std::vector<TextStyle> style_stack;
 
     DocAddr current_address;
 
@@ -199,8 +203,43 @@ class NodeProcessor
     void emit_node(int node_depth, Node::Type type, xmlNodePtr node, std::string text = "")
     {
         attach_pending_ids(current_address);
-        nodes.emplace_back(type, current_address, node, std::move(text), list_depth);
+        nodes.emplace_back(type, current_address, node, std::move(text), current_style, list_depth);
         DEBUG_LOG("[node: " << nodes.back().to_string() << "]");
+    }
+
+    TextStyle style_for_element(xmlNodePtr node)
+    {
+        TextStyle style = TextStyle::Normal;
+        const std::string name = node->name ? (const char*)node->name : "";
+
+        if (name == "b" || name == "strong")
+        {
+            style |= TextStyle::Bold;
+        }
+        if (name == "i" || name == "em" || name == "cite" || name == "dfn" || name == "var")
+        {
+            style |= TextStyle::Italic;
+        }
+        if (name == "code" || name == "kbd" || name == "samp" || name == "tt")
+        {
+            style |= TextStyle::Monospace;
+        }
+
+        const xmlChar *style_attr = xmlGetProp(node, BAD_CAST "style");
+        if (style_attr)
+        {
+            std::string css = to_lower((const char*)style_attr);
+            if (css.find("font-weight") != std::string::npos && (css.find("bold") != std::string::npos || css.find("700") != std::string::npos))
+            {
+                style |= TextStyle::Bold;
+            }
+            if (css.find("font-style") != std::string::npos && (css.find("italic") != std::string::npos || css.find("oblique") != std::string::npos))
+            {
+                style |= TextStyle::Italic;
+            }
+        }
+
+        return style;
     }
 
 public:
@@ -250,6 +289,9 @@ public:
     {
         DEBUG_LOG("<node name=\"" << node->name << "\">");
 
+        style_stack.push_back(current_style);
+        current_style |= style_for_element(node);
+
         // Look for id
         {
             const xmlChar *elem_id = xmlGetProp(node, BAD_CAST "id");
@@ -269,6 +311,7 @@ public:
             case ElementType::H:
                 emit_node(node_depth, Node::Type::SectionSeparator, node);
                 ++header_depth;
+                current_style |= TextStyle::Bold;
                 break;
             case ElementType::Ol:
             case ElementType::Ul:
@@ -290,6 +333,7 @@ public:
             case ElementType::Pre:
                 emit_node(node_depth, Node::Type::SectionSeparator, node);
                 ++pre_depth;
+                current_style |= TextStyle::Monospace;
                 break;
             case ElementType::Table:
                 emit_node(node_depth, Node::Type::SectionSeparator, node);
@@ -357,6 +401,12 @@ public:
         if (elem_type == ElementType::Image)
         {
             ++current_address;
+        }
+
+        if (!style_stack.empty())
+        {
+            current_style = style_stack.back();
+            style_stack.pop_back();
         }
     }
 
@@ -440,6 +490,12 @@ void generate_doc_tokens(
                         substrings.push_back(nodes[j].text.c_str());
                     }
 
+                    TextStyle style = TextStyle::Normal;
+                    for (uint32_t j = i; j < i + group_size; ++j)
+                    {
+                        style |= nodes[j].style;
+                    }
+
                     std::string text = compact_strings(substrings);
                     if (text.size())
                     {
@@ -447,14 +503,16 @@ void generate_doc_tokens(
                         {
                             tokens_out.push_back(std::make_unique<TextDocToken>(
                                 address,
-                                text
+                                text,
+                                style
                             ));
                         }
                         else if (head.type == Node::Type::InlineHeader)
                         {
                             tokens_out.push_back(std::make_unique<HeaderDocToken>(
                                 address,
-                                text
+                                text,
+                                style | TextStyle::Bold
                             ));
                         }
                         else
@@ -462,7 +520,8 @@ void generate_doc_tokens(
                             tokens_out.push_back(std::make_unique<ListItemDocToken>(
                                 address,
                                 text,
-                                head.list_depth
+                                head.list_depth,
+                                style
                             ));
                         }
 
@@ -479,12 +538,19 @@ void generate_doc_tokens(
                         substrings.push_back(nodes[j].text.c_str());
                     }
 
+                    TextStyle style = TextStyle::Monospace;
+                    for (uint32_t j = i; j < i + group_size; ++j)
+                    {
+                        style |= nodes[j].style;
+                    }
+
                     std::string text = remove_carriage_returns(join_strings(substrings));
                     if (text.size())
                     {
                         tokens_out.push_back(std::make_unique<TextDocToken>(
                             address,
-                            text
+                            text,
+                            style
                         ));
                         separator_allowed = true;
                     }

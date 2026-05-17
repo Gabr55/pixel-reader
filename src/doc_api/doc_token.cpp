@@ -27,8 +27,8 @@ std::string DocToken::common_to_string(std::string data) const
 
 ////////////////////////
 
-HeaderDocToken::HeaderDocToken(DocAddr address, const std::string &text)
-    : DocToken(TokenType::Header, address), text(text)
+HeaderDocToken::HeaderDocToken(DocAddr address, const std::string &text, TextStyle style)
+    : DocToken(TokenType::Header, address), text(text), style(style)
 {
 }
 
@@ -39,7 +39,7 @@ bool HeaderDocToken::operator==(const DocToken &other) const
         return false;
     }
     const HeaderDocToken &other_header = static_cast<const HeaderDocToken &>(other);
-    return text == other_header.text;
+    return text == other_header.text && style == other_header.style;
 }
 
 std::string HeaderDocToken::to_string() const
@@ -49,8 +49,8 @@ std::string HeaderDocToken::to_string() const
 
 ////////////////////////
 
-TextDocToken::TextDocToken(DocAddr address, const std::string &text)
-    : DocToken(TokenType::Text, address), text(text)
+TextDocToken::TextDocToken(DocAddr address, const std::string &text, TextStyle style)
+    : DocToken(TokenType::Text, address), text(text), style(style)
 {
 }
 
@@ -61,7 +61,7 @@ bool TextDocToken::operator==(const DocToken &other) const
         return false;
     }
     const TextDocToken &other_text = static_cast<const TextDocToken &>(other);
-    return text == other_text.text;
+    return text == other_text.text && style == other_text.style;
 }
 
 std::string TextDocToken::to_string() const
@@ -93,8 +93,8 @@ std::string ImageDocToken::to_string() const
 
 ////////////////////////
 
-ListItemDocToken::ListItemDocToken(DocAddr address, const std::string &text, int nest_level)
-    : DocToken(TokenType::ListItem, address), text(text), nest_level(nest_level)
+ListItemDocToken::ListItemDocToken(DocAddr address, const std::string &text, int nest_level, TextStyle style)
+    : DocToken(TokenType::ListItem, address), text(text), style(style), nest_level(nest_level)
 {
 }
 
@@ -105,7 +105,7 @@ bool ListItemDocToken::operator==(const DocToken &other) const
         return false;
     }
     const ListItemDocToken &other_list_item = static_cast<const ListItemDocToken &>(other);
-    return text == other_list_item.text && nest_level == other_list_item.nest_level;
+    return text == other_list_item.text && style == other_list_item.style && nest_level == other_list_item.nest_level;
 }
 
 std::string ListItemDocToken::to_string() const

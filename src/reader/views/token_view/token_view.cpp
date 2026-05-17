@@ -4,8 +4,10 @@
 #include "./token_view_styling.h"
 
 #include "doc_api/doc_reader.h"
+#include "reader/config.h"
 #include "reader/system_styling.h"
 #include "reader/shoulder_keymap.h"
+#include "util/sdl_font_cache.h"
 #include "sys/keymap.h"
 #include "sys/screen.h"
 #include "util/sdl_utils.h"
@@ -26,6 +28,29 @@ bool line_fits_on_screen(TTF_Font *font, int avail_width, const char *s, uint32_
     mut_s[len] = replaced;
 
     return w <= avail_width;
+}
+
+int sdl_ttf_style(TextStyle style)
+{
+    int out = TTF_STYLE_NORMAL;
+    if (has_style(style, TextStyle::Bold))
+    {
+        out |= TTF_STYLE_BOLD;
+    }
+    if (has_style(style, TextStyle::Italic))
+    {
+        out |= TTF_STYLE_ITALIC;
+    }
+    return out;
+}
+
+surface_unique_ptr render_text(TTF_Font *font, const std::string &text, TextStyle style, SDL_Color color)
+{
+    int prev_style = TTF_GetFontStyle(font);
+    TTF_SetFontStyle(font, sdl_ttf_style(style));
+    auto surface = surface_unique_ptr { TTF_RenderUTF8_Blended(font, text.c_str(), color) };
+    TTF_SetFontStyle(font, prev_style);
+    return surface;
 }
 
 }  // namespace
@@ -143,6 +168,7 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
     scroll(0);  // Will adjust scroll position if necessary for end of book
 
     TTF_Font *font = state->current_font;
+    TTF_Font *mono_font = cached_load_font(SYSTEM_FONT, state->sys_styling.get_font_size());
     const auto &theme = state->sys_styling.get_loaded_color_theme();
     const int line_height = state->line_height;
     const int line_padding = state->line_padding;
@@ -171,8 +197,8 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
             if (line->type == DisplayLine::Type::Text)
             {
                 const auto *text_line = static_cast<const TextLine *>(line);
-                const char *s = text_line->text.c_str();
-                auto surface = surface_unique_ptr { TTF_RenderUTF8_Shaded(font, s, theme.main_text, theme.background) };
+                TTF_Font *line_font = has_style(text_line->style, TextStyle::Monospace) ? mono_font : font;
+                auto surface = render_text(line_font, text_line->text, text_line->style, theme.main_text);
                 SDL_Rect dest_rect = {
                     static_cast<Sint16>(line_padding + (text_line->centered ? (SCREEN_WIDTH - 2 * line_padding - surface->w) /2 : 0)),
                     static_cast<Sint16>(line_y + line_padding / 2),
@@ -260,7 +286,7 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
             char percent_str[32];
             snprintf(percent_str, sizeof(percent_str), " %d%%", state->title_progress_percent);
 
-            SDL_Surface *page_surface = TTF_RenderUTF8_Shaded(font, percent_str, theme.secondary_text, theme.background);
+            SDL_Surface *page_surface = TTF_RenderUTF8_Blended(font, percent_str, theme.secondary_text);
 
             SDL_Rect dest_rect = {
                 static_cast<Sint16>(SCREEN_WIDTH - page_surface->w - line_padding),
@@ -281,7 +307,7 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
                 static_cast<Sint16>(line_y + line_padding / 2),
                 0, 0
             };
-            SDL_Surface *surface = TTF_RenderUTF8_Shaded(font, state->title.c_str(), theme.secondary_text, theme.background);
+            SDL_Surface *surface = TTF_RenderUTF8_Blended(font, state->title.c_str(), theme.secondary_text);
             SDL_BlitSurface(surface, &title_crop_rect, dest_surface, &dest_rect);
             SDL_FreeSurface(surface);
         }

@@ -1,6 +1,7 @@
 #ifndef DISPLAY_LINE_H_
 #define DISPLAY_LINE_H_
 
+#include "doc_api/doc_token.h"
 #include "doc_api/doc_addr.h"
 #include <filesystem>
 #include <string>
@@ -24,9 +25,10 @@ struct DisplayLine
 struct TextLine: public DisplayLine
 {
     std::string text;
+    TextStyle style;
     bool centered;
 
-    TextLine(DocAddr addr, const std::string& text, bool centered = false);
+    TextLine(DocAddr addr, const std::string& text, TextStyle style = TextStyle::Normal, bool centered = false);
     virtual ~TextLine() = default;
 };
 

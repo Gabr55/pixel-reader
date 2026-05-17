@@ -84,11 +84,14 @@ std::vector<std::unique_ptr<DisplayLine>> TokenLineScroller::render_display_line
     else
     {
         std::string text;
+        TextStyle style = TextStyle::Normal;
         uint32_t extra_text_width = 0;
 
         if (token.type == TokenType::Text)
         {
-            text = static_cast<const TextDocToken &>(token).text;
+            const auto &text_token = static_cast<const TextDocToken &>(token);
+            text = text_token.text;
+            style = text_token.style;
         }
         else if (token.type == TokenType::ListItem)
         {
@@ -99,11 +102,14 @@ std::vector<std::unique_ptr<DisplayLine>> TokenLineScroller::render_display_line
                 ' '
             ) + BULLET + " ";
             text = prefix + list_token.text;
+            style = list_token.style;
             extra_text_width = get_address_width(prefix);
         }
         else if (token.type == TokenType::Header)
         {
-            text = static_cast<const HeaderDocToken &>(token).text;
+            const auto &header_token = static_cast<const HeaderDocToken &>(token);
+            text = header_token.text;
+            style = header_token.style;
         }
         else
         {
@@ -112,12 +118,12 @@ std::vector<std::unique_ptr<DisplayLine>> TokenLineScroller::render_display_line
 
         DocAddr address = token.address;
         std::vector<std::unique_ptr<DisplayLine>> lines;
-        wrap_lines(text.c_str(), line_fits, [type=token.type, &lines, &address, extra_text_width](const char *str, uint32_t len) {
+        wrap_lines(text.c_str(), line_fits, [type=token.type, style, &lines, &address, extra_text_width](const char *str, uint32_t len) {
             std::string line_text(str, len);
             bool centered = type == TokenType::Header;
 
             lines.push_back(
-                std::make_unique<TextLine>(address, line_text, centered)
+                std::make_unique<TextLine>(address, line_text, style, centered)
             );
 
             address += get_address_width(line_text);
