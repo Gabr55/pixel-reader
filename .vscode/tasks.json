@@ -1,0 +1,29 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build Miyoo OnionOS package",
+      "type": "shell",
+      "command": "./scripts/build_miyoo_onion.sh ${input:packageVersion}",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "/bin/zsh",
+          "args": [
+            "-f",
+            "-c"
+          ]
+        }
+      },
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "packageVersion",
+      "type": "promptString",
+      "description": "Package version",
+      "default": "0.1"
+    }
+  ]
+}

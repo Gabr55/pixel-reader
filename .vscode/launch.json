@@ -1,0 +1,20 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Build Miyoo OnionOS package",
+      "type": "node-terminal",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "command": "/bin/zsh -f -c './scripts/build_miyoo_onion.sh ${input:packageVersion}'"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "packageVersion",
+      "type": "promptString",
+      "description": "Package version",
+      "default": "0.1"
+    }
+  ]
+}
